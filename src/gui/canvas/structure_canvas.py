@@ -414,9 +414,9 @@ class StructureCanvas(QGraphicsView):
 
         # Dibujar reacción horizontal Rx si no es cero
         if abs(Rx) > 0.01:
-            # Rx > 0 significa reacción hacia derecha (90°)
-            # Rx < 0 significa reacción hacia izquierda (-90°)
-            angulo = 90 if Rx > 0 else -90
+            # Rx > 0 → reaccion hacia la derecha → 0° en pantalla
+            # Rx < 0 → reaccion hacia la izquierda → 180°
+            angulo = 0 if Rx > 0 else 180
             longitud = 35 + min(abs(Rx) * 2, 25)
             self._draw_arrow(painter, pos, angulo, longitud)
 
@@ -491,6 +491,30 @@ class StructureCanvas(QGraphicsView):
         painter.setPen(QPen(COLOR_REACCION.darker(120)))
         painter.drawText(label_pos, text)
 
+    def _angulo_barra_desde_nudo_screen(self, nudo) -> float:
+        """
+        Retorna el ángulo (grados) de la barra conectada al nudo en coordenadas
+        de pantalla (Y+ hacia abajo en Qt). Se usa para rotar el símbolo del
+        empotramiento de manera que su cara quede perpendicular a la barra.
+
+        Para un nudo en la base de una columna vertical (barra va hacia arriba
+        en pantalla, ángulo −90°) la rotación resultante orienta el símbolo
+        como suelo horizontal con tramado hacia abajo.
+        """
+        import math
+        p_nudo = self._world_to_scene(nudo.x, nudo.y)
+        for barra in self.modelo.barras:
+            if barra.nudo_i.id == nudo.id:
+                p_otro = self._world_to_scene(barra.nudo_j.x, barra.nudo_j.y)
+            elif barra.nudo_j.id == nudo.id:
+                p_otro = self._world_to_scene(barra.nudo_i.x, barra.nudo_i.y)
+            else:
+                continue
+            return math.degrees(
+                math.atan2(p_otro.y() - p_nudo.y(), p_otro.x() - p_nudo.x())
+            )
+        return 0.0  # Sin barra conectada: orientación por defecto
+
     def _draw_vinculo(self, painter: QPainter, nudo: Nudo):
         """
         Dibuja el símbolo del vínculo con representación profesional.
@@ -509,36 +533,41 @@ class StructureCanvas(QGraphicsView):
         painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
 
         if isinstance(vinculo, Empotramiento):
-            # Empotramiento mejorado: línea vertical + hatching diagonal
-            # Línea vertical principal (muro)
+            # Empotramiento: rectángulo (muro) + tramado diagonal.
+            # Se rota según el ángulo de la barra conectada para que la cara
+            # del muro quede siempre perpendicular a la barra.
+            # Coordenadas locales: el nudo está en (0,0) después de translate.
             ancho_muro = 8
+            angulo_barra = self._angulo_barra_desde_nudo_screen(nudo)
+
+            painter.save()
+            painter.translate(pos)
+            painter.rotate(angulo_barra)  # alinea el sistema local con la barra
+
             painter.setBrush(QBrush(self.COLOR_VINCULO.lighter(150)))
             painter.setPen(QPen(self.COLOR_VINCULO, 3))
 
-            # Rectángulo vertical del muro
-            rect_muro = QRectF(
-                pos.x() - ancho_muro/2,
-                pos.y() - size,
-                ancho_muro,
-                size * 2
-            )
+            # Rectángulo del muro en coords locales (centrado en 0,0)
+            rect_muro = QRectF(-ancho_muro / 2, -size, ancho_muro, size * 2)
             painter.drawRect(rect_muro)
 
-            # Hatching diagonal (rayas) a la izquierda del muro
+            # Tramado diagonal a la izquierda del muro (coords locales)
             painter.setPen(QPen(self.COLOR_VINCULO, 2))
             n_rayas = 6
             espacio_rayas = size * 2 / (n_rayas - 1)
             longitud_raya = 12
 
             for i in range(n_rayas):
-                y_start = pos.y() - size + i * espacio_rayas
-                x_start = pos.x() - ancho_muro/2
+                y_start = -size + i * espacio_rayas
+                x_start = -ancho_muro / 2
                 x_end = x_start - longitud_raya
                 y_end = y_start + longitud_raya
                 painter.drawLine(
                     QPointF(x_start, y_start),
                     QPointF(x_end, y_end)
                 )
+
+            painter.restore()
 
         elif isinstance(vinculo, ApoyoFijo):
             # Apoyo fijo (articulado): Triángulo relleno + línea tierra con hatching
@@ -705,25 +734,28 @@ class StructureCanvas(QGraphicsView):
         painter.setPen(QPen(self.COLOR_CARGA, 3))
 
         # Dibujar flecha para Fy (vertical)
+        # Convencion de _draw_arrow: 0°=derecha, 90°=abajo, -90°=arriba
+        # Fy > 0 → fuerza hacia abajo (Y+ abajo en TERNA) → 90° en pantalla
         if abs(carga.Fy) > 0.01:
-            angulo = 0 if carga.Fy > 0 else 180  # 0° = arriba, 180° = abajo
-            longitud = 40 + min(abs(carga.Fy) * 2, 30)  # Escalado por magnitud
+            angulo = 90 if carga.Fy > 0 else -90   # 90°=abajo, -90°=arriba
+            longitud = 40 + min(abs(carga.Fy) * 2, 30)
             self._draw_arrow(painter, pos, angulo, longitud)
 
-            # Etiqueta de la carga
-            offset_x = 15 if carga.Fy < 0 else -15
-            offset_y = 25 if carga.Fy < 0 else -25
+            # Etiqueta: arriba y a la derecha para flecha hacia abajo, y viceversa
+            offset_x = 15
+            offset_y = -25 if carga.Fy > 0 else 25
             self._draw_load_label(painter, pos, offset_x, offset_y, f"Fy={carga.Fy:.1f}kN")
 
         # Dibujar flecha para Fx (horizontal)
+        # Fx > 0 → fuerza hacia la derecha → 0° en pantalla
         if abs(carga.Fx) > 0.01:
-            angulo = 90 if carga.Fx > 0 else -90  # 90° = derecha, -90° = izquierda
+            angulo = 0 if carga.Fx > 0 else 180    # 0°=derecha, 180°=izquierda
             longitud = 40 + min(abs(carga.Fx) * 2, 30)
             self._draw_arrow(painter, pos, angulo, longitud)
 
-            # Etiqueta de la carga
-            offset_x = 50 if carga.Fx > 0 else -65
-            offset_y = 5
+            # Etiqueta: a la izquierda del tronco para flecha hacia derecha
+            offset_x = -65 if carga.Fx > 0 else 50
+            offset_y = -10
             self._draw_load_label(painter, pos, offset_x, offset_y, f"Fx={carga.Fx:.1f}kN")
 
         # Dibujar momento (Mz)
@@ -813,17 +845,20 @@ class StructureCanvas(QGraphicsView):
         p1_base = self._world_to_scene(x1_world, y1_world)
         p2_base = self._world_to_scene(x2_world, y2_world)
 
-        # Puntos superiores (con intensidad q1 y q2)
+        # Puntos del lado opuesto a la barra (donde nace la carga).
+        # El trapecio se dibuja en la dirección CONTRARIA a la carga para que
+        # quede "detrás" de las flechas: si la carga apunta hacia abajo, el
+        # trapecio queda encima de la barra.
         offset1 = carga.q1 * escala
         offset2 = carga.q2 * escala
 
         p1_top = p1_base + QPointF(
-            offset1 * math.cos(angulo_global),
-            offset1 * math.sin(angulo_global)
+            -offset1 * math.cos(angulo_global),
+            -offset1 * math.sin(angulo_global)
         )
         p2_top = p2_base + QPointF(
-            offset2 * math.cos(angulo_global),
-            offset2 * math.sin(angulo_global)
+            -offset2 * math.cos(angulo_global),
+            -offset2 * math.sin(angulo_global)
         )
 
         # Dibujar trapecio relleno semi-transparente
@@ -849,24 +884,27 @@ class StructureCanvas(QGraphicsView):
             longitud_flecha = q_local * escala
 
             if longitud_flecha > 2:  # Solo dibujar si es significativa
-                end_flecha = pos_flecha + QPointF(
-                    longitud_flecha * math.cos(angulo_global),
-                    longitud_flecha * math.sin(angulo_global)
+                # La flecha parte del borde del trapecio (lado opuesto a la carga)
+                # y apunta HACIA la barra (en la dirección de angulo_global).
+                start_flecha = pos_flecha + QPointF(
+                    -longitud_flecha * math.cos(angulo_global),
+                    -longitud_flecha * math.sin(angulo_global)
                 )
-                painter.drawLine(pos_flecha, end_flecha)
+                painter.drawLine(start_flecha, pos_flecha)
 
-                # Pequeña punta de flecha
-                self._draw_small_arrow_head(painter, end_flecha, angulo_global)
+                # Punta de flecha en la barra, apuntando en dirección de la carga
+                self._draw_small_arrow_head(painter, pos_flecha, angulo_global)
 
         # Etiqueta central
         x_centro = (x1_world + x2_world) / 2
         y_centro = (y1_world + y2_world) / 2
         pos_centro = self._world_to_scene(x_centro, y_centro)
 
-        # Offset perpendicular
+        # Offset perpendicular: la etiqueta va en el mismo lado que el trapecio
+        # (opuesto a la dirección de la carga, es decir, "sobre" la barra)
         offset_label = (carga.q1 + carga.q2) / 2 * escala + 20
-        offset_x = offset_label * math.cos(angulo_global)
-        offset_y = offset_label * math.sin(angulo_global)
+        offset_x = -offset_label * math.cos(angulo_global)
+        offset_y = -offset_label * math.sin(angulo_global)
 
         if carga.es_uniforme:
             label = f"q={carga.q1:.1f} kN/m"
