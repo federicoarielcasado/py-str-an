@@ -338,6 +338,68 @@ class MainWindow(QMainWindow):
         self.action_resolver_toolbar = QAction("Resolver", self)
         self.action_resolver_toolbar.triggered.connect(self._on_resolver)
 
+        toolbar.addSeparator()
+
+        # ── Diagramas ─────────────────────────────────────────────────────
+        toolbar.addWidget(self._toolbar_label("Diagramas"))
+
+        self.btn_diagrama_N = QPushButton("N")
+        self.btn_diagrama_N.setCheckable(True)
+        self.btn_diagrama_N.setChecked(False)
+        self.btn_diagrama_N.setEnabled(False)
+        self.btn_diagrama_N.setFixedWidth(30)
+        self.btn_diagrama_N.setStatusTip("Mostrar/ocultar diagrama de Axiles")
+        self.btn_diagrama_N.setToolTip("<b>Axil (N)</b><br>Azul — esfuerzo normal en cada barra")
+        self.btn_diagrama_N.setStyleSheet(
+            "QPushButton { border: 1px solid #93c5fd; border-radius: 3px; padding: 2px; font-weight: bold; }"
+            "QPushButton:checked { background-color: #2563eb; color: white; border-color: #1d4ed8; }"
+            "QPushButton:disabled { color: #aaa; border-color: #ddd; }"
+        )
+        self.btn_diagrama_N.clicked.connect(self._on_toggle_diagrama_N)
+        toolbar.addWidget(self.btn_diagrama_N)
+
+        self.btn_diagrama_V = QPushButton("V")
+        self.btn_diagrama_V.setCheckable(True)
+        self.btn_diagrama_V.setChecked(False)
+        self.btn_diagrama_V.setEnabled(False)
+        self.btn_diagrama_V.setFixedWidth(30)
+        self.btn_diagrama_V.setStatusTip("Mostrar/ocultar diagrama de Cortantes")
+        self.btn_diagrama_V.setToolTip("<b>Cortante (V)</b><br>Verde — esfuerzo cortante en cada barra")
+        self.btn_diagrama_V.setStyleSheet(
+            "QPushButton { border: 1px solid #6ee7b7; border-radius: 3px; padding: 2px; font-weight: bold; }"
+            "QPushButton:checked { background-color: #059669; color: white; border-color: #047857; }"
+            "QPushButton:disabled { color: #aaa; border-color: #ddd; }"
+        )
+        self.btn_diagrama_V.clicked.connect(self._on_toggle_diagrama_V)
+        toolbar.addWidget(self.btn_diagrama_V)
+
+        self.btn_diagrama_M = QPushButton("M")
+        self.btn_diagrama_M.setCheckable(True)
+        self.btn_diagrama_M.setChecked(False)
+        self.btn_diagrama_M.setEnabled(False)
+        self.btn_diagrama_M.setFixedWidth(30)
+        self.btn_diagrama_M.setStatusTip("Mostrar/ocultar diagrama de Momentos Flectores")
+        self.btn_diagrama_M.setToolTip("<b>Flector (M)</b><br>Magenta — momento flector en cada barra")
+        self.btn_diagrama_M.setStyleSheet(
+            "QPushButton { border: 1px solid #e9d5ff; border-radius: 3px; padding: 2px; font-weight: bold; }"
+            "QPushButton:checked { background-color: #9333ea; color: white; border-color: #7e22ce; }"
+            "QPushButton:disabled { color: #aaa; border-color: #ddd; }"
+        )
+        self.btn_diagrama_M.clicked.connect(self._on_toggle_diagrama_M)
+        toolbar.addWidget(self.btn_diagrama_M)
+
+        self.btn_deformada = QPushButton("Def.")
+        self.btn_deformada.setEnabled(False)
+        self.btn_deformada.setStatusTip("Ver deformada elastica (ventana externa)")
+        self.btn_deformada.setToolTip("<b>Deformada elastica</b><br>Abre grafico matplotlib con la deformada exagerada")
+        self.btn_deformada.setStyleSheet(
+            "QPushButton { border: 1px solid #d1d5db; border-radius: 3px; padding: 2px 6px; }"
+            "QPushButton:hover { background-color: #f3f4f6; }"
+            "QPushButton:disabled { color: #aaa; border-color: #ddd; }"
+        )
+        self.btn_deformada.clicked.connect(self._on_ver_deformada)
+        toolbar.addWidget(self.btn_deformada)
+
         # Conectar acciones de herramientas para modo exclusivo
         self._setup_tool_actions()
 
@@ -514,6 +576,13 @@ class MainWindow(QMainWindow):
             self.label_estado_analisis.setToolTip(
                 "Presione F5 para resolver la estructura"
             )
+            # Deshabilitar y desmarcar botones de diagramas
+            for btn in ('btn_diagrama_N', 'btn_diagrama_V', 'btn_diagrama_M', 'btn_deformada'):
+                if hasattr(self, btn):
+                    b = getattr(self, btn)
+                    b.setEnabled(False)
+                    if hasattr(b, 'setChecked'):
+                        b.setChecked(False)
         elif exitoso:
             self.label_estado_analisis.setText("[ Resuelto OK ]")
             self.label_estado_analisis.setStyleSheet(
@@ -524,6 +593,10 @@ class MainWindow(QMainWindow):
             self.label_estado_analisis.setToolTip(
                 "Analisis completado. Resultados disponibles en el panel inferior."
             )
+            # Habilitar botones de diagramas
+            for btn in ('btn_diagrama_N', 'btn_diagrama_V', 'btn_diagrama_M', 'btn_deformada'):
+                if hasattr(self, btn):
+                    getattr(self, btn).setEnabled(True)
         else:
             self.label_estado_analisis.setText("[ Error en analisis ]")
             self.label_estado_analisis.setStyleSheet(
@@ -534,6 +607,13 @@ class MainWindow(QMainWindow):
             self.label_estado_analisis.setToolTip(
                 "El analisis fallo. Revise el modelo y vuelva a intentarlo."
             )
+            # Deshabilitar y desmarcar botones de diagramas
+            for btn in ('btn_diagrama_N', 'btn_diagrama_V', 'btn_diagrama_M', 'btn_deformada'):
+                if hasattr(self, btn):
+                    b = getattr(self, btn)
+                    b.setEnabled(False)
+                    if hasattr(b, 'setChecked'):
+                        b.setChecked(False)
 
     # =========================================================================
     # Undo / Redo
@@ -1200,10 +1280,48 @@ class MainWindow(QMainWindow):
             self.statusbar.showMessage("Error en analisis", 5000)
 
     def _on_ver_diagramas(self):
-        """Muestra los diagramas de esfuerzos."""
+        """Alterna todos los diagramas a la vez (F6). Sincroniza los botones del toolbar."""
         if hasattr(self, 'canvas'):
             self.canvas.toggle_diagrams()
+            # Sincronizar estado de botones con el canvas
+            for btn_name, flag in (
+                ('btn_diagrama_N', self.canvas._show_diagrama_N),
+                ('btn_diagrama_V', self.canvas._show_diagrama_V),
+                ('btn_diagrama_M', self.canvas._show_diagrama_M),
+            ):
+                if hasattr(self, btn_name):
+                    getattr(self, btn_name).setChecked(flag)
             self._refresh_canvas()
+
+    def _on_toggle_diagrama_N(self, checked: bool) -> None:
+        """Activa o desactiva el diagrama de axiles."""
+        if hasattr(self, 'canvas'):
+            self.canvas.set_mostrar_diagrama_N(checked)
+
+    def _on_toggle_diagrama_V(self, checked: bool) -> None:
+        """Activa o desactiva el diagrama de cortantes."""
+        if hasattr(self, 'canvas'):
+            self.canvas.set_mostrar_diagrama_V(checked)
+
+    def _on_toggle_diagrama_M(self, checked: bool) -> None:
+        """Activa o desactiva el diagrama de momentos."""
+        if hasattr(self, 'canvas'):
+            self.canvas.set_mostrar_diagrama_M(checked)
+
+    def _on_ver_deformada(self) -> None:
+        """Abre la deformada elástica en una ventana matplotlib."""
+        if self._resultado is None or self.modelo is None:
+            return
+        try:
+            from src.ui.visualization.deformada import graficar_deformada
+            import matplotlib.pyplot as plt
+            graficar_deformada(self.modelo, self._resultado)
+            plt.show(block=False)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Error",
+                f"No se pudo generar la deformada:\n{e}"
+            )
 
     def _on_acerca(self):
         """Muestra información sobre la aplicación."""

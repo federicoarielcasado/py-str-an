@@ -82,7 +82,7 @@
       "q2": 10.0,
       "x1": 0.0,
       "x2": null,
-      "angulo": -90.0
+      "angulo": 90.0
     },
     {
       "tipo": "CargaPuntualNudo",

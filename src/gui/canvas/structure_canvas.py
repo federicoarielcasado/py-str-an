@@ -87,10 +87,10 @@ class StructureCanvas(QGraphicsView):
         self._show_grid = True
         self._show_diagrams = False
 
-        # Opciones de diagramas
-        self._show_diagrama_M = True   # Mostrar diagrama de momentos
-        self._show_diagrama_V = True   # Mostrar diagrama de cortantes
-        self._show_diagrama_N = True   # Mostrar diagrama de axiles
+        # Opciones de diagramas (False = oculto hasta que el usuario los activa)
+        self._show_diagrama_M = False
+        self._show_diagrama_V = False
+        self._show_diagrama_N = False
         self._escala_diagramas: float | None = None  # None = auto
 
         # Configuración de grilla
@@ -202,8 +202,31 @@ class StructureCanvas(QGraphicsView):
         self.viewport().update()
 
     def toggle_diagrams(self):
-        """Alterna la visualización de diagramas."""
-        self._show_diagrams = not self._show_diagrams
+        """Alterna todos los diagramas: si alguno está activo los apaga todos; si ninguno, los activa todos."""
+        alguno_activo = self._show_diagrama_N or self._show_diagrama_V or self._show_diagrama_M
+        nuevo = not alguno_activo
+        self._show_diagrama_N = nuevo
+        self._show_diagrama_V = nuevo
+        self._show_diagrama_M = nuevo
+        self._show_diagrams = nuevo
+        self.viewport().update()
+
+    def set_mostrar_diagrama_N(self, visible: bool) -> None:
+        """Muestra u oculta el diagrama de axiles."""
+        self._show_diagrama_N = visible
+        self._show_diagrams = self._show_diagrama_N or self._show_diagrama_V or self._show_diagrama_M
+        self.viewport().update()
+
+    def set_mostrar_diagrama_V(self, visible: bool) -> None:
+        """Muestra u oculta el diagrama de cortantes."""
+        self._show_diagrama_V = visible
+        self._show_diagrams = self._show_diagrama_N or self._show_diagrama_V or self._show_diagrama_M
+        self.viewport().update()
+
+    def set_mostrar_diagrama_M(self, visible: bool) -> None:
+        """Muestra u oculta el diagrama de momentos."""
+        self._show_diagrama_M = visible
+        self._show_diagrams = self._show_diagrama_N or self._show_diagrama_V or self._show_diagrama_M
         self.viewport().update()
 
     # =========================================================================
@@ -281,7 +304,7 @@ class StructureCanvas(QGraphicsView):
             self._draw_carga(painter, carga)
 
         # Dibujar diagramas si están activos
-        if self._show_diagrams and self._resultado:
+        if self._resultado and (self._show_diagrama_N or self._show_diagrama_V or self._show_diagrama_M):
             self._draw_diagramas(painter)
 
         # Dibujar barra temporal
