@@ -188,6 +188,15 @@ def calcular_esfuerzos_viga_isostatica(
     Rx_i, Ry_i, Mz_i = reaccion_i
     Rx_j, Ry_j, Mz_j = reaccion_j
 
+    # Proyectar reacciones globales al sistema local de la barra
+    # N_local = R · eje_x_local = Rx*cos(alpha) + Ry*sin(alpha)
+    # V_local = R · eje_y_local = -Rx*sin(alpha) + Ry*cos(alpha)
+    alpha = barra.angulo  # ángulo de la barra respecto al eje X global [rad]
+    cos_a = math.cos(alpha)
+    sin_a = math.sin(alpha)
+    N_i_local = Rx_i * cos_a + Ry_i * sin_a
+    V_i_local = -Rx_i * sin_a + Ry_i * cos_a
+
     # Identificar puntos de interés (extremos + cargas puntuales)
     puntos_interes = [0.0, L]
     for carga in cargas_barra:
@@ -211,13 +220,12 @@ def calcular_esfuerzos_viga_isostatica(
         """
         momento = 0.0
 
-        # 1. Reacción en i
-        if x > 0 and abs(Ry_i) > 1e-10:
+        # 1. Reacción en i (componente perpendicular a la barra = cortante local)
+        if x > 0 and abs(V_i_local) > 1e-10:
             distancia = x
-            # Ry_i < 0 (hacia arriba) → giro horario
-            # El momento es: M = -Ry_i × distancia
-            # Si Ry_i = -10 (arriba), M = -(-10) × distancia = +10×d (positivo)
-            momento -= Ry_i * distancia
+            # V_i_local < 0 (hacia arriba en local) → giro horario → momento +
+            # M = -V_i_local × distancia
+            momento -= V_i_local * distancia
 
         # 2. Momento aplicado en i
         momento += Mz_i
@@ -226,15 +234,12 @@ def calcular_esfuerzos_viga_isostatica(
         for carga in cargas_barra:
             if isinstance(carga, CargaPuntualBarra):
                 if carga.a < x:
-                    Px_global, Py_global = carga.componentes_globales()
+                    # Usar componente perpendicular local (angulo relativo al eje de la barra)
+                    ang_rad_carga = math.radians(carga.angulo)
+                    Py_local_carga = carga.P * math.sin(ang_rad_carga)
                     distancia = x - carga.a
-
-                    # Py_global > 0 (hacia abajo) → giro antihorario → negativo
-                    # Py_global < 0 (hacia arriba) → giro horario → positivo
-                    if Py_global > 0:  # Hacia abajo
-                        momento -= Py_global * distancia
-                    else:  # Hacia arriba
-                        momento += abs(Py_global) * distancia
+                    # Py_local > 0 (hacia abajo local) → giro antihorario → negativo
+                    momento -= Py_local_carga * distancia
 
         # 4. Cargas distribuidas a la izquierda de x
         for carga in cargas_barra:
@@ -286,14 +291,15 @@ def calcular_esfuerzos_viga_isostatica(
         return momento
 
     def calcular_cortante_en_x(x: float) -> float:
-        """Calcula V(x) mirando a la IZQUIERDA desde posición x."""
-        cortante = Ry_i
+        """Calcula V(x) mirando a la IZQUIERDA desde posición x (coordenadas locales)."""
+        cortante = V_i_local
 
         for carga in cargas_barra:
             if isinstance(carga, CargaPuntualBarra):
                 if carga.a < x:
-                    Px_global, Py_global = carga.componentes_globales()
-                    cortante += Py_global
+                    ang_rad_carga = math.radians(carga.angulo)
+                    Py_local_carga = carga.P * math.sin(ang_rad_carga)
+                    cortante += Py_local_carga
 
         for carga in cargas_barra:
             if isinstance(carga, CargaDistribuida):
@@ -326,14 +332,15 @@ def calcular_esfuerzos_viga_isostatica(
         return cortante
 
     def calcular_axial_en_x(x: float) -> float:
-        """Calcula N(x) mirando a la IZQUIERDA desde posición x."""
-        axial = Rx_i
+        """Calcula N(x) mirando a la IZQUIERDA desde posición x (coordenadas locales)."""
+        axial = N_i_local
 
         for carga in cargas_barra:
             if isinstance(carga, CargaPuntualBarra):
                 if carga.a < x:
-                    Px_global, Py_global = carga.componentes_globales()
-                    axial += Px_global
+                    ang_rad_carga = math.radians(carga.angulo)
+                    Px_local_carga = carga.P * math.cos(ang_rad_carga)
+                    axial += Px_local_carga
 
         for carga in cargas_barra:
             if isinstance(carga, CargaDistribuida):

@@ -629,23 +629,19 @@ class MotorMetodoFuerzas:
 
         # Superponer reacciones
         #
-        # En el Método de las Fuerzas, la reacción final en cada nudo se calcula
-        # de la siguiente manera:
+        # En el Método de las Fuerzas, la reacción final en cada nudo se calcula:
         #
-        #   - Para componentes que son redundantes (ej: Mz en empotramiento liberado):
-        #     La reacción final ES directamente el valor Xi resuelto.
-        #     El redundante Xi representa exactamente esa reacción.
+        #   - Para componentes REDUNDANTES (ej: Mz en empotramiento liberado):
+        #     La reacción final ES el valor Xi resuelto.
         #
-        #   - Para componentes que NO son redundantes (ej: Ry en apoyo fijo de la
-        #     fundamental):
-        #     La reacción viene de la estructura fundamental: R_final = R0.
-        #     Los redundantes Xi solo modifican las componentes que son su propio
-        #     GDL liberado; las reacciones en otros vínculos de la fundamental ya
-        #     incorporan el efecto de los Xi a través del equilibrio que se resolvió
-        #     en la fundamental bajo las cargas reales (R0 ya es correcto).
+        #   - Para componentes NO REDUNDANTES (ej: Ry en apoyo fijo de la fundamental):
+        #     La reacción final es R0 de la estructura fundamental.
+        #     La fundamental fue resuelta bajo las cargas reales, con los vínculos
+        #     no-redundantes activos; su equilibrio ya es el correcto.
         #
-        # En otras palabras: R_final = R0 para no-redundantes, Xi para redundantes.
-        # No hay contribución cruzada Xi·Ri entre nudos distintos.
+        # Nota: la verificación de equilibrio global (verificar_equilibrio_global)
+        # usa la fórmula completa R0+ΣXi·Ri internamente para comprobar ΣF=0,
+        # independientemente de lo que se almacene en reacciones_finales.
         from src.domain.analysis.redundantes import TipoRedundante
 
         # Construir mapa {(nudo_id, componente) → valor_Xi}
@@ -666,7 +662,11 @@ class MotorMetodoFuerzas:
 
             R0 = self._fundamental.obtener_reaccion(nudo.id)
 
-            # Cada componente: usa Xi si es redundante, R0 si no lo es
+            # Para componentes redundantes: el valor Xi ES la reacción final.
+            # Para componentes no redundantes: usar R0 (la fundamental ya incorpora
+            # el equilibrio bajo las cargas reales; la superposición cruzada Xi·Ri
+            # no es aplicable porque las reacciones de las subestructuras Xi no
+            # representan contribuciones a GDL distintos del propio redundante).
             Rx = redundante_map.get((nudo.id, "Rx"), R0[0])
             Ry = redundante_map.get((nudo.id, "Ry"), R0[1])
             Mz = redundante_map.get((nudo.id, "Mz"), R0[2])
@@ -824,16 +824,57 @@ class MotorMetodoFuerzas:
         Fy_cargas = 0.0
         Mz_cargas = 0.0
 
+        import math as _math
+        from src.domain.entities.carga import (
+            CargaPuntualNudo, CargaPuntualBarra, CargaDistribuida
+        )
+
+        # Momento de una fuerza (Fx, Fy) en (x, y) respecto al origen:
+        # M = -Fy*(0 - x) + Fx*(0 - y) = Fy*x - Fx*y
+        def _mz_fuerza(Fx_f, Fy_f, x_f, y_f):
+            return Fy_f * x_f - Fx_f * y_f
+
         for carga in self.modelo.cargas:
-            if hasattr(carga, 'Fx'):
+            if isinstance(carga, CargaPuntualNudo):
                 Fx_cargas += carga.Fx
-            if hasattr(carga, 'Fy'):
                 Fy_cargas += carga.Fy
-            if hasattr(carga, 'Mz'):
-                Mz_cargas += carga.Mz
-            # Cargas distribuidas: su resultante ya está incluida en las
-            # reacciones de la estructura fundamental a través de las
-            # acciones de empotramiento, no se suman aquí directamente.
+                x_n = carga.nudo.x
+                y_n = carga.nudo.y
+                Mz_cargas += _mz_fuerza(carga.Fx, carga.Fy, x_n, y_n) + carga.Mz
+            elif isinstance(carga, CargaPuntualBarra):
+                alpha = carga.barra.angulo
+                ang_rad = _math.radians(carga.angulo)
+                Px_local = carga.P * _math.cos(ang_rad)
+                Py_local = carga.P * _math.sin(ang_rad)
+                Fx_g = Px_local * _math.cos(alpha) - Py_local * _math.sin(alpha)
+                Fy_g = Px_local * _math.sin(alpha) + Py_local * _math.cos(alpha)
+                x_app = carga.barra.nudo_i.x + carga.a * _math.cos(alpha)
+                y_app = carga.barra.nudo_i.y + carga.a * _math.sin(alpha)
+                Fx_cargas += Fx_g
+                Fy_cargas += Fy_g
+                Mz_cargas += _mz_fuerza(Fx_g, Fy_g, x_app, y_app)
+            elif isinstance(carga, CargaDistribuida):
+                barra = carga.barra
+                alpha = barra.angulo
+                x1 = carga.x1
+                x2 = carga.x2 if carga.x2 is not None else barra.L
+                L_carga = x2 - x1
+                resultante = (carga.q1 + carga.q2) / 2.0 * L_carga
+                ang_rad = _math.radians(carga.angulo)
+                Px_local = resultante * _math.cos(ang_rad)
+                Py_local = resultante * _math.sin(ang_rad)
+                Fx_g = Px_local * _math.cos(alpha) - Py_local * _math.sin(alpha)
+                Fy_g = Px_local * _math.sin(alpha) + Py_local * _math.cos(alpha)
+                Fx_cargas += Fx_g
+                Fy_cargas += Fy_g
+                suma_q = carga.q1 + carga.q2
+                if abs(suma_q) > 1e-10:
+                    x_centroide_local = x1 + L_carga * (carga.q1 + 2*carga.q2) / (3*suma_q)
+                else:
+                    x_centroide_local = x1 + L_carga / 2.0
+                x_app = barra.nudo_i.x + x_centroide_local * _math.cos(alpha)
+                y_app = barra.nudo_i.y + x_centroide_local * _math.sin(alpha)
+                Mz_cargas += _mz_fuerza(Fx_g, Fy_g, x_app, y_app)
 
         # --- 2. Sumar reacciones finales (superposición) ---
         # R_final = R0 + ΣXi·Ri  (reconstruido desde subestructuras internas)
@@ -843,24 +884,41 @@ class MotorMetodoFuerzas:
 
         X = self._solucion_sece.X if self._solucion_sece is not None else []
 
+        # Mapa de redundantes para override de componentes redundantes
+        from src.domain.analysis.redundantes import TipoRedundante
+        redundante_map: Dict[Tuple[int, str], float] = {}
+        for i, red in enumerate(self._redundantes):
+            if red.nudo_id is None:
+                continue
+            if red.tipo == TipoRedundante.REACCION_RX:
+                redundante_map[(red.nudo_id, "Rx")] = float(X[i])
+            elif red.tipo == TipoRedundante.REACCION_RY:
+                redundante_map[(red.nudo_id, "Ry")] = float(X[i])
+            elif red.tipo == TipoRedundante.REACCION_MZ:
+                redundante_map[(red.nudo_id, "Mz")] = float(X[i])
+
         for nudo in self.modelo.nudos:
             if not nudo.tiene_vinculo:
                 continue
 
-            # Reacción en estructura fundamental
+            # Superposición: R0 + ΣXi·Ri
             R0 = self._fundamental.obtener_reaccion(nudo.id)
-            Rx, Ry, Mz_r = R0
-
-            # Sumar contribuciones de cada redundante
+            Rx, Ry, Mz_r = R0[0], R0[1], R0[2]
             for i, Xi in enumerate(X):
                 Ri = self._subestructuras_xi[i].obtener_reaccion(nudo.id)
-                Rx += Xi * Ri[0]
-                Ry += Xi * Ri[1]
-                Mz_r += Xi * Ri[2]
+                Rx += float(Xi) * Ri[0]
+                Ry += float(Xi) * Ri[1]
+                Mz_r += float(Xi) * Ri[2]
+
+            # Para componentes redundantes: el valor Xi ES la reacción final
+            Rx = redundante_map.get((nudo.id, "Rx"), Rx)
+            Ry = redundante_map.get((nudo.id, "Ry"), Ry)
+            Mz_r = redundante_map.get((nudo.id, "Mz"), Mz_r)
 
             Rx_reac += Rx
             Ry_reac += Ry
-            Mz_reac += Mz_r
+            # Momento de la reacción respecto al origen: fuerzas + momento puro
+            Mz_reac += _mz_fuerza(Rx, Ry, nudo.x, nudo.y) + Mz_r
 
         # --- 3. Residuales: ΣFuerzas_externas + ΣReacciones = 0 ---
         residuales = {
