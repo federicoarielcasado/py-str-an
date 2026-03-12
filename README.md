@@ -3,7 +3,7 @@
 **Python Structural Analysis — Pórticos Planos 2D**
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-337%2F337%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-341%2F341%20passing-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > Anteriormente conocido como **PyANES-MF** y luego **PyANES**. Renombrado a **PyStrAn**
@@ -528,6 +528,13 @@ resultado.Xi(1)   # Valor del primer redundante
 
 ## 📝 Changelog
 
+### v2.2.1 (12 de Marzo de 2026)
+
+**Hipótesis de rigidez axial infinita en el MD:**
+- ✅ `MotorMetodoDeformaciones` e `analizar_estructura_deformaciones` aceptan `incluir_deformacion_axial=False`
+- ✅ Implementado por penalización `EA_eff = EA × 10³` (deformación axial residual < 0.1 %, condicionamiento numérico seguro)
+- ✅ MF(axial=False) ↔ MD(axial=False) coinciden en vigas y pórticos (4 nuevos tests); 341 tests en total
+
 ### v2.2.0 (12 de Marzo de 2026)
 
 **Selector de redundantes y corrección de convenio de signos:**
@@ -584,4 +591,4 @@ Este proyecto está licenciado bajo la **Licencia MIT** - ver el archivo [LICENS
 
 ---
 
-*Última actualización: 11 de Marzo de 2026*
+*Última actualización: 12 de Marzo de 2026*

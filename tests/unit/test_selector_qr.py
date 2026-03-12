@@ -586,6 +586,109 @@ class TestIntegracionQRConMF:
             f"MF y MD no coinciden: max_diff={comp['max_diferencia']:.4e}"
         )
 
+    def test_mf_md_coinciden_viga_continua_sin_axial(self, acero, seccion):
+        """
+        MF y MD coinciden con hipotesis de rigidez axial infinita (sin axial).
+
+        Esta hipotesis (clasica en calculo manual) debe ser consistente entre
+        ambos metodos: MF(axial=False) == MD(axial=False).
+        """
+        from src.domain.analysis.motor_deformaciones import (
+            analizar_estructura_deformaciones,
+            comparar_resultados,
+        )
+        from src.domain.analysis.motor_fuerzas import MotorMetodoFuerzas
+
+        m = _viga_continua(acero, seccion)
+        r_md = analizar_estructura_deformaciones(m, incluir_deformacion_axial=False)
+        r_mf = MotorMetodoFuerzas(m, incluir_deformacion_axial=False).resolver()
+
+        assert r_md.exitoso
+        assert r_mf.exitoso
+        comp = comparar_resultados(r_mf, r_md, tol=1e-2)
+        assert comp["coinciden"], (
+            f"MF(sin axial) y MD(sin axial) no coinciden: "
+            f"max_diff={comp['max_diferencia']:.4e}"
+        )
+
+    def test_mf_md_coinciden_portico_sin_axial(self, acero, seccion):
+        """
+        MF y MD coinciden para portico con hipotesis de rigidez axial infinita.
+
+        Con axial=False ambos metodos adoptan la misma hipotesis simplificadora
+        (barras inextensibles) por lo que deben coincidir exactamente.
+        """
+        from src.domain.analysis.motor_deformaciones import (
+            analizar_estructura_deformaciones,
+            comparar_resultados,
+        )
+        from src.domain.analysis.motor_fuerzas import MotorMetodoFuerzas
+
+        m = _portico_biempotrado(acero, seccion)
+        r_md = analizar_estructura_deformaciones(m, incluir_deformacion_axial=False)
+        r_mf = MotorMetodoFuerzas(m, incluir_deformacion_axial=False).resolver()
+
+        assert r_md.exitoso
+        assert r_mf.exitoso
+        comp = comparar_resultados(r_mf, r_md, tol=1e-2)
+        assert comp["coinciden"], (
+            f"MF(sin axial) y MD(sin axial) no coinciden: "
+            f"max_diff={comp['max_diferencia']:.4e}"
+        )
+
+    def test_md_axial_false_vs_true_difieren_en_portico(self, acero, seccion):
+        """
+        MD con y sin deformacion axial da resultados diferentes en porticos.
+
+        Verifica que el parametro realmente tiene efecto: en porticos, la
+        deformacion axial de las columnas afecta los momentos de empotramiento
+        (diferencia esperada ~0.16 kNm para el caso de referencia).
+        """
+        from src.domain.analysis.motor_deformaciones import (
+            analizar_estructura_deformaciones,
+            comparar_resultados,
+        )
+
+        m = _portico_biempotrado(acero, seccion)
+        r_con_axial = analizar_estructura_deformaciones(m, incluir_deformacion_axial=True)
+        r_sin_axial = analizar_estructura_deformaciones(m, incluir_deformacion_axial=False)
+
+        assert r_con_axial.exitoso
+        assert r_sin_axial.exitoso
+
+        comp = comparar_resultados(r_con_axial, r_sin_axial, tol=1e-2)
+        # Deben diferir en porticos (si coincidieran, el parametro no tendria efecto)
+        assert not comp["coinciden"], (
+            "MD con y sin axial coinciden en el portico: el parametro "
+            "incluir_deformacion_axial no tiene efecto"
+        )
+
+    def test_md_axial_false_vs_true_coinciden_en_viga(self, acero, seccion):
+        """
+        MD con y sin deformacion axial da el mismo resultado en vigas.
+
+        En vigas continuas, las barras son horizontales y las cargas son
+        transversales: el efecto axial es nulo, por lo que ambas hipotesis
+        deben producir resultados identicos.
+        """
+        from src.domain.analysis.motor_deformaciones import (
+            analizar_estructura_deformaciones,
+            comparar_resultados,
+        )
+
+        m = _viga_continua(acero, seccion)
+        r_con_axial = analizar_estructura_deformaciones(m, incluir_deformacion_axial=True)
+        r_sin_axial = analizar_estructura_deformaciones(m, incluir_deformacion_axial=False)
+
+        assert r_con_axial.exitoso
+        assert r_sin_axial.exitoso
+
+        comp = comparar_resultados(r_con_axial, r_sin_axial, tol=1e-2)
+        assert comp["coinciden"], (
+            f"MD con/sin axial difieren en viga (no deberian): "
+            f"max_diff={comp['max_diferencia']:.4e}"
+        )
+
     def test_solver_adaptativo_portico_pocos_intentos(self, acero, seccion):
         """
         Con QR, el solver adaptativo debe encontrar la solucion MF en pocos

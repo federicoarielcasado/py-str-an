@@ -129,9 +129,11 @@ class MotorMetodoDeformaciones:
         self,
         modelo: "ModeloEstructural",
         metodo_resolucion: str = "directo",
+        incluir_deformacion_axial: bool = True,
     ):
         self.modelo = modelo
         self.metodo_resolucion = metodo_resolucion
+        self.incluir_deformacion_axial = incluir_deformacion_axial
 
         # Estado interno
         self._advertencias: List[str] = []
@@ -299,8 +301,18 @@ class MotorMetodoDeformaciones:
         gdl_map = self._numerador.gdl_map
 
         for barra in self.modelo.barras:
+            # Rigidez axial efectiva: penalización para simular barra inextensible
+            if self.incluir_deformacion_axial:
+                ea_eff = barra.EA
+            else:
+                # EA_eff >> EA_real → deformación axial ≈ 0 (barra inextensible).
+                # Factor 1e3: axial queda ~10^3–10^6 veces más rígido que flexión
+                # para secciones típicas (EA_eff/L << 1e12 → condicionamiento OK).
+                # La deformación axial residual ≈ 0.1% de la real → despreciable.
+                ea_eff = barra.EA * 1e3
+
             # Matriz de rigidez local
-            k_local = _k_local_barra(barra.EA, barra.EI, barra.L)
+            k_local = _k_local_barra(ea_eff, barra.EI, barra.L)
             self._k_local_cache[barra.id] = k_local
 
             # Transformar a global: K_elem = T6 @ k_local @ T6.T
@@ -937,12 +949,19 @@ class MotorMetodoDeformaciones:
 
 def analizar_estructura_deformaciones(
     modelo: "ModeloEstructural",
+    incluir_deformacion_axial: bool = True,
 ) -> ResultadoAnalisis:
     """
     Función de conveniencia para analizar una estructura por el Método de Deformaciones.
 
     Args:
         modelo: Modelo estructural completo (nudos, barras, vínculos, cargas)
+        incluir_deformacion_axial: Si True (defecto), incluye deformación axial real de
+            cada barra. Si False, simula rigidez axial infinita (barras inextensibles)
+            mediante el método de penalización (EA_eff = EA × 1e6). Esto corresponde
+            a la hipótesis clásica de pequeñas deformaciones donde se desprecia el
+            acortamiento/alargamiento de las barras — habitual en cálculo manual y
+            permite comparar directamente con el MF sin deformación axial.
 
     Returns:
         ResultadoAnalisis con diagramas, reacciones y desplazamientos nodales
@@ -952,7 +971,9 @@ def analizar_estructura_deformaciones(
         >>> resultado = analizar_estructura_deformaciones(modelo)
         >>> print(f"Desplazamiento nudo 2: {resultado.reacciones_finales[2]}")
     """
-    motor = MotorMetodoDeformaciones(modelo)
+    motor = MotorMetodoDeformaciones(
+        modelo, incluir_deformacion_axial=incluir_deformacion_axial
+    )
     return motor.resolver()
 
 
