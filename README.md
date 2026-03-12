@@ -1,13 +1,10 @@
-# PyANES 🏗️
+# PyStrAn 🏗️
 
 **Sistema de Análisis Estructural de Pórticos Planos 2D**
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
 [![Tests](https://img.shields.io/badge/Tests-276%2F276%20passing-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-> Anteriormente conocido como **PyANES-MF**. Renombrado a PyANES al incorporar el
-> Método de las Deformaciones como segundo motor de análisis independiente.
 
 ---
 
