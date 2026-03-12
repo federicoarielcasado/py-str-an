@@ -291,8 +291,19 @@ def calcular_esfuerzos_viga_isostatica(
         return momento
 
     def calcular_cortante_en_x(x: float) -> float:
-        """Calcula V(x) mirando a la IZQUIERDA desde posición x (coordenadas locales)."""
-        cortante = V_i_local
+        """
+        Calcula V(x) mirando a la IZQUIERDA desde posición x (coordenadas locales).
+
+        CONVENCIÓN (consistente con Método de las Deformaciones):
+        V positivo = la parte derecha empuja hacia ARRIBA a la parte izquierda.
+        Equivalente a V = -(componente perpendicular de la reacción en i).
+
+        Para una reacción hacia ARRIBA (Ry_i < 0 en TERNA Y+ abajo):
+            V(0) = -Ry_i > 0  (cortante positivo en extremo izquierdo con apoyo)
+
+        La acumulación de carga distribuida hacia abajo DISMINUYE V(x).
+        """
+        cortante = V_i_local  # Ry_i en local: negativo para apoyo hacia arriba
 
         for carga in cargas_barra:
             if isinstance(carga, CargaPuntualBarra):
@@ -329,7 +340,8 @@ def calcular_esfuerzos_viga_isostatica(
                     Py_dist = resultante * math.sin(ang_rad)
                     cortante += Py_dist
 
-        return cortante
+        # Invertir signo: fuerza-nudo → cortante-interno (mismo flip que en MD)
+        return -cortante
 
     def calcular_axial_en_x(x: float) -> float:
         """Calcula N(x) mirando a la IZQUIERDA desde posición x (coordenadas locales)."""

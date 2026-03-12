@@ -7,9 +7,10 @@ seleccionar automáticamente los redundantes óptimos.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from src.domain.model.modelo_estructural import ModeloEstructural
@@ -112,10 +113,20 @@ class SelectorRedundantes:
         """
         Selecciona automáticamente los redundantes.
 
-        Utiliza una heurística que prioriza:
-        1. Momentos de reacción (Mz) en empotramientos
-        2. Reacciones verticales (Ry) en apoyos simples
-        3. Reacciones horizontales (Rx)
+        Estrategia de selección en dos niveles:
+
+        **Nivel 1 — QR con pivoteo columnar** (``scipy`` requerido):
+            Construye la matriz de equilibrio global 3×r donde cada columna
+            representa la contribución de una reacción candidata a ΣFx, ΣFy
+            y ΣMz.  El QR con pivoteo identifica directamente las columnas
+            linealmente dependientes (= redundantes) sin búsqueda combinatoria.
+
+        **Nivel 2 — Spanning tree** (para redundancias internas):
+            Cuando los redundantes no provienen solo de reacciones (estructuras
+            con lazos cerrados), el spanning tree BFS del grafo de barras
+            identifica qué barras crean loops y las marca como cortes internos.
+
+        Si ``scipy`` no está disponible, cae en la heurística original (Mz→Ry→Rx).
 
         Returns:
             Lista de redundantes seleccionados
@@ -136,8 +147,11 @@ class SelectorRedundantes:
         # Identificar todos los candidatos posibles
         self._identificar_candidatos()
 
-        # Aplicar heurística de selección
-        self._seleccionados = self._aplicar_heuristica(gh)
+        # Intentar selección determinística por QR; fallback a heurística
+        try:
+            self._seleccionados = self._seleccionar_por_qr(gh)
+        except Exception:
+            self._seleccionados = self._aplicar_heuristica(gh)
 
         # Asignar índices
         for i, red in enumerate(self._seleccionados):
@@ -222,6 +236,175 @@ class SelectorRedundantes:
                         nudo_id=nudo.id,
                         posicion=pos,
                     ))
+
+    def _seleccionar_por_qr(self, n_redundantes: int) -> List[Redundante]:
+        """
+        Selecciona redundantes usando QR con pivoteo (Nivel 1) y spanning tree (Nivel 2).
+
+        **Nivel 1 — QR sobre reacciones:**
+            Construye A (3×r) donde cada columna j captura la contribución de la
+            j-ésima reacción candidata al equilibrio global:
+
+            - Rx en (xₙ, yₙ): columna = [1, 0, −(yₙ−y_ref)]
+            - Ry en (xₙ, yₙ): columna = [0, 1,  (xₙ−x_ref)]
+            - Mz en (xₙ, yₙ): columna = [0, 0,  1           ]
+
+            ``scipy.linalg.qr(A, pivoting=True)`` devuelve el vector de pivotes P
+            tal que las primeras 3 columnas de A[:,P] son linealmente independientes
+            → forman la base isostática.  Las columnas P[3:] son los redundantes.
+
+        **Nivel 2 — Spanning tree (BFS):**
+            Si aún se necesitan redundantes internos, recorre el grafo de barras
+            con BFS.  Las barras que no pertenecen al árbol de expansión crean
+            loops cerrados: sus cortes (MOMENTO_INTERNO) son los redundantes.
+
+        Args:
+            n_redundantes: GH de la estructura
+
+        Returns:
+            Lista de redundantes seleccionados (longitud == n_redundantes)
+
+        Raises:
+            ImportError: Si scipy no está disponible
+            ValueError: Si no se pueden encontrar suficientes redundantes válidos
+        """
+        import numpy as np
+        from scipy.linalg import qr as scipy_qr  # lanza ImportError si no hay scipy
+
+        cand_reaccion = [
+            c for c in self._candidatos
+            if c.tipo in (
+                TipoRedundante.REACCION_RX,
+                TipoRedundante.REACCION_RY,
+                TipoRedundante.REACCION_MZ,
+            )
+        ]
+        r = len(cand_reaccion)
+        seleccionados: List[Redundante] = []
+
+        # ── Nivel 1: QR para redundantes de apoyo ────────────────────────────
+        if r > 3:
+            nudos_vinculados = [n for n in self.modelo.nudos if n.tiene_vinculo]
+            denom = max(len(nudos_vinculados), 1)
+            x_ref = sum(n.x for n in nudos_vinculados) / denom
+            y_ref = sum(n.y for n in nudos_vinculados) / denom
+
+            nudos_map: Dict[int, object] = {n.id: n for n in self.modelo.nudos}
+            A = np.zeros((3, r), dtype=np.float64)
+
+            for j, cand in enumerate(cand_reaccion):
+                nudo = nudos_map.get(cand.nudo_id)
+                if nudo is None:
+                    continue
+                dx = nudo.x - x_ref
+                dy = nudo.y - y_ref
+                if cand.tipo == TipoRedundante.REACCION_RX:
+                    A[0, j] = 1.0       # ΣFx
+                    A[2, j] = -dy       # ΣMz: Rx·(−Δy)
+                elif cand.tipo == TipoRedundante.REACCION_RY:
+                    A[1, j] = 1.0       # ΣFy
+                    A[2, j] = dx        # ΣMz: Ry·(+Δx)
+                elif cand.tipo == TipoRedundante.REACCION_MZ:
+                    A[2, j] = 1.0       # ΣMz directo
+
+            _, _, piv = scipy_qr(A, pivoting=True)
+
+            # Columnas piv[3:] = reacciones redundantes (fuera de la base)
+            n_red_reaccion = min(r - 3, n_redundantes)
+            for k in range(n_red_reaccion):
+                seleccionados.append(cand_reaccion[piv[3 + k]])
+
+        # ── Nivel 2: spanning tree para redundantes internos ─────────────────
+        n_restantes = n_redundantes - len(seleccionados)
+        if n_restantes > 0:
+            internos = self._seleccionar_internos_spanning_tree(n_restantes)
+            seleccionados.extend(internos)
+
+        # ── Fallback parcial: candidatos internos pre-identificados ───────────
+        n_restantes = n_redundantes - len(seleccionados)
+        if n_restantes > 0:
+            cand_internos = [
+                c for c in self._candidatos
+                if c.tipo == TipoRedundante.MOMENTO_INTERNO
+            ]
+            usados_ids = {id(s) for s in seleccionados}
+            for c in cand_internos:
+                if n_restantes <= 0:
+                    break
+                if id(c) not in usados_ids:
+                    seleccionados.append(c)
+                    n_restantes -= 1
+
+        if len(seleccionados) < n_redundantes:
+            raise ValueError(
+                f"QR: no se encontraron suficientes redundantes "
+                f"(necesarios={n_redundantes}, encontrados={len(seleccionados)})"
+            )
+
+        return seleccionados
+
+    def _seleccionar_internos_spanning_tree(
+        self, n_internos: int
+    ) -> List[Redundante]:
+        """
+        Identifica redundantes internos mediante spanning tree BFS.
+
+        El grafo de la estructura tiene nudos como vértices y barras como aristas.
+        Un spanning tree de (n_nudos) vértices tiene exactamente (n_nudos − 1)
+        aristas.  Toda barra adicional crea un loop cerrado, lo que equivale a
+        un grado de hiperestaticidad interno.
+
+        Para cada barra extra se genera un ``MOMENTO_INTERNO`` en la sección
+        media (x = L/2), que equivale a introducir una rótula virtual en ese
+        punto para la estructura isostática principal.
+
+        Args:
+            n_internos: Número de redundantes internos necesarios
+
+        Returns:
+            Lista de redundantes MOMENTO_INTERNO (puede ser menor que n_internos
+            si no hay suficientes barras extra)
+        """
+        if not self.modelo.barras or n_internos <= 0:
+            return []
+
+        # Grafo de adyacencia: nudo_id → [(nudo_vecino_id, barra), ...]
+        adj: Dict[int, List] = {n.id: [] for n in self.modelo.nudos}
+        for barra in self.modelo.barras:
+            adj[barra.nudo_i.id].append((barra.nudo_j.id, barra))
+            adj[barra.nudo_j.id].append((barra.nudo_i.id, barra))
+
+        # BFS para construir el spanning tree
+        inicio = self.modelo.nudos[0].id
+        visitados: Set[int] = {inicio}
+        barras_en_arbol: Set[int] = set()
+        cola: deque = deque([inicio])
+
+        while cola:
+            nudo_actual = cola.popleft()
+            for nudo_vecino, barra in adj[nudo_actual]:
+                if nudo_vecino not in visitados:
+                    visitados.add(nudo_vecino)
+                    barras_en_arbol.add(barra.id)
+                    cola.append(nudo_vecino)
+
+        # Barras que NO están en el spanning tree → crean loops (redundantes)
+        barras_extra = [
+            b for b in self.modelo.barras if b.id not in barras_en_arbol
+        ]
+
+        redundantes: List[Redundante] = []
+        for barra in barras_extra:
+            if len(redundantes) >= n_internos:
+                break
+            redundantes.append(Redundante(
+                tipo=TipoRedundante.MOMENTO_INTERNO,
+                barra_id=barra.id,
+                nudo_id=barra.nudo_i.id,
+                posicion=barra.L / 2.0,
+            ))
+
+        return redundantes
 
     def _aplicar_heuristica(self, n_redundantes: int) -> List[Redundante]:
         """
@@ -318,26 +501,12 @@ class SelectorRedundantes:
         if reacciones_restantes < 3:
             return True
 
-        # Verificar que no se liberan todas las reacciones de un nudo
-        for nudo in self.modelo.nudos:
-            if not nudo.tiene_vinculo:
-                continue
-
-            gdl = nudo.vinculo.gdl_restringidos()
-            gdl_liberados = sum(
-                1 for r in redundantes
-                if r.nudo_id == nudo.id and r.tipo in (
-                    TipoRedundante.REACCION_RX,
-                    TipoRedundante.REACCION_RY,
-                    TipoRedundante.REACCION_MZ,
-                )
-            )
-
-            # Si se liberan todos los GDL de un nudo, es inestable
-            if gdl_liberados >= len(gdl):
-                return True
-
         # ── 2. Verificación de rango geométrico ───────────────────────────────
+        # (Única verificación necesaria: la comprobación por-nudo de "todos los
+        # GDL liberados" era demasiado conservadora — rechazaba combinaciones
+        # válidas como liberar el único GDL de un Rodillo intermediario, lo cual
+        # produce una estructura isostática correcta si el rango de la matriz de
+        # equilibrio resultante es 3.  El rank-check a continuación es suficiente.)
         # Construir la matriz de equilibrio para las reacciones que QUEDAN
         # (sin las redundantes actuales). Si la matriz es singular o de rango < 3,
         # la selección genera inestabilidad geométrica (e.g. todas las fuerzas

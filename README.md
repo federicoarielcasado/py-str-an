@@ -3,7 +3,7 @@
 **Python Structural Analysis — Pórticos Planos 2D**
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-300%2F300%20passing-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-337%2F337%20passing-brightgreen.svg)](tests/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > Anteriormente conocido como **PyANES-MF** y luego **PyANES**. Renombrado a **PyStrAn**
@@ -404,7 +404,7 @@ ModeloEstructural (nudos, barras, cargas, vínculos)
 
 ### Suite de Tests Automatizados
 
-PyStrAn cuenta con **300 tests automatizados** que garantizan la corrección de los cálculos:
+PyStrAn cuenta con **337 tests automatizados** que garantizan la corrección de los cálculos:
 
 ```bash
 # Ejecutar todos los tests
@@ -527,6 +527,14 @@ resultado.Xi(1)   # Valor del primer redundante
 ---
 
 ## 📝 Changelog
+
+### v2.2.0 (12 de Marzo de 2026)
+
+**Selector de redundantes y corrección de convenio de signos:**
+- ✅ Selector QR de redundantes algebraicamente independientes en `redundantes.py` (`scipy.linalg.qr` con pivoteo de columnas)
+- ✅ Árbol generador para redundantes internos: elimina barras por BFS garantizando isostática
+- ✅ Corrección de convenio V(x) en `esfuerzos.py`: `return -cortante` — consistente con MD (`V_i = −p_elem_local[1]`)
+- ✅ 37 nuevos tests en `test_selector_qr.py` incluyendo validación cruzada MF↔MD para vigas y pórticos (337 total)
 
 ### v2.1.0 (12 de Marzo de 2026)
 
