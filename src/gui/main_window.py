@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QPushButton,
     QSizePolicy,
+    QComboBox,
 )
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QFont
@@ -27,6 +28,7 @@ from PyQt6.QtGui import QAction, QIcon, QKeySequence, QFont
 from src.domain.model.modelo_estructural import ModeloEstructural
 from src.domain.entities.vinculo import Empotramiento, ApoyoFijo, Rodillo
 from src.domain.analysis.motor_fuerzas import MotorMetodoFuerzas, ResultadoAnalisis
+from src.domain.analysis.motor_deformaciones import MotorMetodoDeformaciones
 from src.gui.canvas.structure_canvas import StructureCanvas
 from src.gui.widgets.properties_panel import PropertiesPanel
 from src.gui.widgets.results_panel import ResultsPanel
@@ -300,6 +302,26 @@ class MainWindow(QMainWindow):
         toolbar.addSeparator()
 
         # ── Análisis ──────────────────────────────────────────────────────
+        # Selector de método de análisis
+        toolbar.addWidget(self._toolbar_label("Método"))
+        self.combo_metodo = QComboBox()
+        self.combo_metodo.addItem("Fuerzas (MF)", userData="MF")
+        self.combo_metodo.addItem("Deformaciones (MD)", userData="MD")
+        self.combo_metodo.setToolTip(
+            "<b>Método de análisis</b><br>"
+            "<b>Fuerzas (MF):</b> Método clásico de flexibilidad. "
+            "Requiere selección de redundantes.<br>"
+            "<b>Deformaciones (MD):</b> Método de rigidez (FEM). "
+            "Resuelve directamente sin selección de redundantes."
+        )
+        self.combo_metodo.setFixedWidth(160)
+        self.combo_metodo.setStyleSheet(
+            "QComboBox { padding: 3px 6px; border: 1px solid #93c5fd; "
+            "border-radius: 4px; background: white; }"
+            "QComboBox:focus { border: 1px solid #2563eb; }"
+        )
+        toolbar.addWidget(self.combo_metodo)
+
         # Botón "Resolver" como QPushButton prominente
         self.btn_resolver = QPushButton("  Resolver (F5)  ")
         self.btn_resolver.setStatusTip("Ejecutar analisis por el Metodo de las Fuerzas")
@@ -424,14 +446,20 @@ class MainWindow(QMainWindow):
                 if other != action:
                     other.setChecked(False)
 
-            # Notificar al canvas
+            # Notificar al canvas y al panel de propiedades
             if hasattr(self, 'canvas'):
                 if action == self.action_seleccionar:
                     self.canvas.set_mode("select")
+                    if hasattr(self, 'properties_panel'):
+                        self.properties_panel.set_tool_mode("select")
                 elif action == self.action_crear_nudo:
                     self.canvas.set_mode("create_node")
+                    if hasattr(self, 'properties_panel'):
+                        self.properties_panel.set_tool_mode("create_node")
                 elif action == self.action_crear_barra:
                     self.canvas.set_mode("create_bar")
+                    if hasattr(self, 'properties_panel'):
+                        self.properties_panel.set_tool_mode("create_bar")
 
     def _setup_central_widget(self):
         """Configura el widget central con el canvas."""
@@ -1132,6 +1160,7 @@ class MainWindow(QMainWindow):
             )
             return
 
+        metodo_seleccionado = self.combo_metodo.currentData()
         gh = self.modelo.grado_hiperestaticidad
 
         if gh < 0:
@@ -1143,7 +1172,8 @@ class MainWindow(QMainWindow):
             )
             return
 
-        if gh > 0:
+        # El MD no necesita selección de redundantes: resuelve directamente
+        if gh > 0 and metodo_seleccionado == "MF":
             # Verificar si se seleccionaron redundantes
             if not hasattr(self.modelo, 'redundantes_seleccionados') or \
                not self.modelo.redundantes_seleccionados:
@@ -1186,20 +1216,25 @@ class MainWindow(QMainWindow):
                     return  # Usuario canceló
 
         # Ejecutar análisis
-        self.statusbar.showMessage("Resolviendo estructura...", 0)
+        metodo = self.combo_metodo.currentData()
+        self.statusbar.showMessage(f"Resolviendo estructura ({metodo})...", 0)
 
         try:
-            # Crear motor de análisis
-            redundantes_manuales = None
-            if hasattr(self.modelo, 'redundantes_seleccionados') and self.modelo.redundantes_seleccionados:
-                redundantes_manuales = self.modelo.redundantes_seleccionados
+            if metodo == "MD":
+                # Método de las Deformaciones: no requiere redundantes
+                motor = MotorMetodoDeformaciones(modelo=self.modelo)
+            else:
+                # Método de las Fuerzas
+                redundantes_manuales = None
+                if hasattr(self.modelo, 'redundantes_seleccionados') and self.modelo.redundantes_seleccionados:
+                    redundantes_manuales = self.modelo.redundantes_seleccionados
 
-            motor = MotorMetodoFuerzas(
-                modelo=self.modelo,
-                seleccion_manual_redundantes=redundantes_manuales,
-                incluir_deformacion_axial=False,  # Solo flexión por ahora
-                incluir_deformacion_cortante=False,
-            )
+                motor = MotorMetodoFuerzas(
+                    modelo=self.modelo,
+                    seleccion_manual_redundantes=redundantes_manuales,
+                    incluir_deformacion_axial=False,
+                    incluir_deformacion_cortante=False,
+                )
 
             # Resolver
             resultado = motor.resolver()

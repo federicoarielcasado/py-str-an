@@ -144,6 +144,7 @@ class PropertiesPanel(QWidget):
         self.btn_crear_nudo = QPushButton("Crear Nudo")
         crear_nudo_layout.addRow("", self.btn_crear_nudo)
 
+        self.group_crear_nudo.setVisible(False)  # oculto hasta activar herramienta Nudo
         layout.addWidget(self.group_crear_nudo)
 
         # --- Crear Barra paramétrica ---------------------------------
@@ -163,6 +164,7 @@ class PropertiesPanel(QWidget):
         self.btn_crear_barra = QPushButton("Crear Barra")
         crear_barra_layout.addRow("", self.btn_crear_barra)
 
+        self.group_crear_barra.setVisible(False)  # oculto hasta activar herramienta Barra
         layout.addWidget(self.group_crear_barra)
 
         # Separador
@@ -700,6 +702,26 @@ class PropertiesPanel(QWidget):
     # ------------------------------------------------------------------
     # Utilidades
     # ------------------------------------------------------------------
+
+    def set_tool_mode(self, mode: str) -> None:
+        """
+        Ajusta la sección de creación paramétrica visible según la herramienta activa.
+
+        Args:
+            mode: "select"       → oculta creación de nudo y barra
+                  "create_node"  → muestra creación de nudo, oculta barra
+                  "create_bar"   → muestra creación de barra, oculta nudo
+        """
+        if mode == "create_node":
+            self.group_crear_nudo.setVisible(True)
+            self.group_crear_barra.setVisible(False)
+        elif mode == "create_bar":
+            self.group_crear_nudo.setVisible(False)
+            self.group_crear_barra.setVisible(True)
+        else:
+            # "select" u otro modo: ocultar ambas secciones de creación
+            self.group_crear_nudo.setVisible(False)
+            self.group_crear_barra.setVisible(False)
 
     def clear(self):
         """Limpia el panel (sin selección)."""

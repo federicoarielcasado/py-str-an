@@ -127,7 +127,14 @@ class ResultsPanel(QWidget):
             "Nudo", "Rx (kN)", "Ry (kN)", "Mz (kNm)"
         ])
         header = self.table_reacciones.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Nudo: ancho fijo compacto; columnas de valores: repartidas equitativamente
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+        self.table_reacciones.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
         layout.addWidget(self.table_reacciones)
 
@@ -159,7 +166,14 @@ class ResultsPanel(QWidget):
             "Nj (kN)", "Vj (kN)", "Mj (kNm)"
         ])
         header = self.table_esfuerzos.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # 7 columnas: Extremo fijo, esfuerzos con ancho mínimo legible
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        for col in range(1, 7):
+            header.setSectionResizeMode(col, QHeaderView.ResizeMode.Interactive)
+            self.table_esfuerzos.setColumnWidth(col, 90)
+        self.table_esfuerzos.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
 
         layout.addWidget(self.table_esfuerzos)
 
