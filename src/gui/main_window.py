@@ -26,7 +26,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QAction, QIcon, QKeySequence, QFont
 
 from src.domain.model.modelo_estructural import ModeloEstructural
-from src.domain.entities.vinculo import Empotramiento, ApoyoFijo, Rodillo
+from src.domain.entities.vinculo import Empotramiento, ApoyoFijo, Rodillo, Guia, ResorteElastico
 from src.domain.analysis.motor_fuerzas import MotorMetodoFuerzas, ResultadoAnalisis
 from src.domain.analysis.motor_deformaciones import MotorMetodoDeformaciones
 from src.gui.canvas.structure_canvas import StructureCanvas
@@ -829,13 +829,14 @@ class MainWindow(QMainWindow):
 
         # Mapear índice a tipo de vínculo
         vinculo_map = {
-            0: None,  # Sin vínculo
+            0: None,           # Sin vínculo
             1: "empotramiento",
             2: "apoyo_fijo",
             3: "rodillo_h",
             4: "rodillo_v",
             5: "guia_h",
             6: "guia_v",
+            7: "resorte",
         }
 
         tipo_vinculo = vinculo_map.get(index)
@@ -847,7 +848,6 @@ class MainWindow(QMainWindow):
         self._guardar_snapshot_undo()
 
         if tipo_vinculo is None:
-            # Remover vínculo
             nudo.vinculo = None
         elif tipo_vinculo == "empotramiento":
             self.modelo.asignar_vinculo(id_, Empotramiento(id_))
@@ -857,7 +857,19 @@ class MainWindow(QMainWindow):
             self.modelo.asignar_vinculo(id_, Rodillo(id_, direccion="Uy"))
         elif tipo_vinculo == "rodillo_v":
             self.modelo.asignar_vinculo(id_, Rodillo(id_, direccion="Ux"))
-        # TODO: implementar guías
+        elif tipo_vinculo == "guia_h":
+            self.modelo.asignar_vinculo(id_, Guia(nudo=nudo, direccion_libre="Ux"))
+        elif tipo_vinculo == "guia_v":
+            self.modelo.asignar_vinculo(id_, Guia(nudo=nudo, direccion_libre="Uy"))
+        elif tipo_vinculo == "resorte":
+            from src.gui.dialogs import ResorteElasticoDialog
+            dlg = ResorteElasticoDialog(parent=self)
+            if dlg.exec() and dlg.resorte_creado is not None:
+                self.modelo.asignar_vinculo(id_, dlg.resorte_creado)
+            else:
+                # Usuario canceló: revertir snapshot y salir sin cambios
+                self._undo()
+                return
 
         self._on_model_changed()
         self._refresh_canvas()

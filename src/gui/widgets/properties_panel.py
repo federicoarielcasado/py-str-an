@@ -31,6 +31,7 @@ from src.domain.entities.vinculo import (
     ApoyoFijo,
     Rodillo,
     Guia,
+    ResorteElastico,
 )
 
 
@@ -209,6 +210,7 @@ class PropertiesPanel(QWidget):
             "Rodillo Vertical",
             "Guía Horizontal",
             "Guía Vertical",
+            "Resorte Elastico",
         ])
         nudo_layout.addRow("Vínculo:", self.combo_vinculo)
 
@@ -252,7 +254,9 @@ class PropertiesPanel(QWidget):
         self.combo_tipo_carga.addItems([
             "Puntual en nudo",
             "Puntual en barra",
-            "Distribuida uniforme",
+            "Distribuida",
+            "Termica",
+            "Movimiento impuesto",
         ])
         carga_layout.addRow("Tipo:", self.combo_tipo_carga)
 
@@ -459,6 +463,12 @@ class PropertiesPanel(QWidget):
             return Guia(nudo=nudo, direccion_libre="Ux")
         elif texto == "Guía Vertical":
             return Guia(nudo=nudo, direccion_libre="Uy")
+        elif texto == "Resorte Elastico":
+            from src.gui.dialogs.carga_dialog import ResorteElasticoDialog
+            dlg = ResorteElasticoDialog(parent=self)
+            if dlg.exec() and dlg.resorte_creado is not None:
+                return dlg.resorte_creado
+            return None  # usuario canceló → no asignar vínculo
         return None
 
     def _texto_vinculo(self, vinculo) -> str:
@@ -473,6 +483,8 @@ class PropertiesPanel(QWidget):
             return "Rodillo Horizontal" if vinculo.direccion == "Uy" else "Rodillo Vertical"
         if isinstance(vinculo, Guia):
             return "Guía Horizontal" if vinculo.direccion_libre == "Ux" else "Guía Vertical"
+        if isinstance(vinculo, ResorteElastico):
+            return "Resorte Elastico"
         return "Sin vínculo"
 
     # ------------------------------------------------------------------
@@ -520,14 +532,21 @@ class PropertiesPanel(QWidget):
     def _on_tipo_carga_changed(self, index: int):
         """Adapta el suffix del spinbox de valor según el tipo de carga."""
         tipo = self.combo_tipo_carga.currentText()
-        if tipo == "Distribuida uniforme":
+        if tipo == "Distribuida":
             self.spin_carga_valor.setSuffix(" kN/m")
+            self.spin_carga_valor.setVisible(True)
             self.spin_carga_pos.setVisible(False)
         elif tipo == "Puntual en barra":
             self.spin_carga_valor.setSuffix(" kN")
+            self.spin_carga_valor.setVisible(True)
             self.spin_carga_pos.setVisible(True)
+        elif tipo in ("Termica", "Movimiento impuesto"):
+            # Los parámetros se ingresan en el diálogo propio
+            self.spin_carga_valor.setVisible(False)
+            self.spin_carga_pos.setVisible(False)
         else:  # Puntual en nudo
             self.spin_carga_valor.setSuffix(" kN")
+            self.spin_carga_valor.setVisible(True)
             self.spin_carga_pos.setVisible(False)
 
     # ------------------------------------------------------------------
@@ -558,6 +577,8 @@ class PropertiesPanel(QWidget):
             CargaPuntualNudoDialog,
             CargaPuntualBarraDialog,
             CargaDistribuidaDialog,
+            CargaTermicaDialog,
+            MovimientoImpuestoDialog,
         )
 
         if tipo_carga == "Puntual en nudo":
@@ -591,7 +612,7 @@ class PropertiesPanel(QWidget):
                 self._canvas.viewport().update()
                 self.property_changed.emit()
 
-        elif tipo_carga == "Distribuida uniforme":
+        elif tipo_carga == "Distribuida":
             if elem_tipo != "barra":
                 QMessageBox.information(
                     self, "Selección requerida",
@@ -602,6 +623,42 @@ class PropertiesPanel(QWidget):
             for i in range(dlg.combo_barra.count()):
                 if dlg.combo_barra.itemData(i) == elem_id:
                     dlg.combo_barra.setCurrentIndex(i)
+                    break
+            if dlg.exec() and dlg.carga_creada is not None:
+                modelo.agregar_carga(dlg.carga_creada)
+                self._canvas.viewport().update()
+                self.property_changed.emit()
+
+        elif tipo_carga == "Termica":
+            if elem_tipo != "barra":
+                QMessageBox.information(
+                    self, "Selección requerida",
+                    "Seleccione una barra en el canvas antes de agregar una carga térmica."
+                )
+                return
+            dlg = CargaTermicaDialog(modelo, parent=self)
+            # Pre-seleccionar la barra activa
+            for i in range(dlg.combo_barra.count()):
+                if dlg.combo_barra.itemData(i) == elem_id:
+                    dlg.combo_barra.setCurrentIndex(i)
+                    break
+            if dlg.exec() and dlg.carga_creada is not None:
+                modelo.agregar_carga(dlg.carga_creada)
+                self._canvas.viewport().update()
+                self.property_changed.emit()
+
+        elif tipo_carga == "Movimiento impuesto":
+            if elem_tipo != "nudo":
+                QMessageBox.information(
+                    self, "Selección requerida",
+                    "Seleccione un nudo en el canvas antes de agregar un movimiento impuesto."
+                )
+                return
+            dlg = MovimientoImpuestoDialog(modelo, parent=self)
+            # Pre-seleccionar el nudo activo
+            for i in range(dlg.combo_nudo.count()):
+                if dlg.combo_nudo.itemData(i) == elem_id:
+                    dlg.combo_nudo.setCurrentIndex(i)
                     break
             if dlg.exec() and dlg.carga_creada is not None:
                 modelo.agregar_carga(dlg.carga_creada)

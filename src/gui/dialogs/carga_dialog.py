@@ -26,7 +26,10 @@ from src.domain.entities.carga import (
     CargaPuntualNudo,
     CargaPuntualBarra,
     CargaDistribuida,
+    CargaTermica,
+    MovimientoImpuesto,
 )
+from src.domain.entities.vinculo import ResorteElastico
 
 
 class CargaPuntualNudoDialog(QDialog):
@@ -611,3 +614,299 @@ class CargaDistribuidaDialog(QDialog):
             self.accept()
         except ValueError as e:
             QMessageBox.critical(self, "Error de validación", str(e))
+
+
+# ---------------------------------------------------------------------------
+# Diálogo: Resorte Elástico
+# ---------------------------------------------------------------------------
+
+class ResorteElasticoDialog(QDialog):
+    """
+    Diálogo para configurar las rigideces de un resorte elástico.
+
+    Permite ingresar kx [kN/m], ky [kN/m] y ktheta [kNm/rad].
+    Al menos una rigidez debe ser mayor que cero.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Resorte Elastico")
+        self.setMinimumWidth(360)
+        self.resorte_creado: Optional[ResorteElastico] = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        group = QGroupBox("Rigideces del resorte")
+        form = QFormLayout(group)
+
+        self.spin_kx = QDoubleSpinBox()
+        self.spin_kx.setRange(0.0, 1e9)
+        self.spin_kx.setDecimals(1)
+        self.spin_kx.setSuffix(" kN/m")
+        self.spin_kx.setSingleStep(100.0)
+        form.addRow("kx  (traslacion X):", self.spin_kx)
+
+        self.spin_ky = QDoubleSpinBox()
+        self.spin_ky.setRange(0.0, 1e9)
+        self.spin_ky.setDecimals(1)
+        self.spin_ky.setSuffix(" kN/m")
+        self.spin_ky.setSingleStep(100.0)
+        form.addRow("ky  (traslacion Y):", self.spin_ky)
+
+        self.spin_ktheta = QDoubleSpinBox()
+        self.spin_ktheta.setRange(0.0, 1e9)
+        self.spin_ktheta.setDecimals(1)
+        self.spin_ktheta.setSuffix(" kNm/rad")
+        self.spin_ktheta.setSingleStep(100.0)
+        form.addRow("ktheta (rotacion):", self.spin_ktheta)
+
+        layout.addWidget(group)
+
+        nota = QLabel(
+            "Al menos una rigidez debe ser mayor que cero.\n"
+            "Valores en cero indican direccion libre (sin resorte en esa dir.)."
+        )
+        nota.setStyleSheet("color: #555; font-size: 10px; padding: 4px;")
+        nota.setWordWrap(True)
+        layout.addWidget(nota)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_accept(self):
+        kx = self.spin_kx.value()
+        ky = self.spin_ky.value()
+        ktheta = self.spin_ktheta.value()
+        try:
+            self.resorte_creado = ResorteElastico(kx=kx, ky=ky, ktheta=ktheta)
+            self.accept()
+        except ValueError as e:
+            QMessageBox.critical(self, "Error de validacion", str(e))
+
+
+# ---------------------------------------------------------------------------
+# Diálogo: Carga Térmica
+# ---------------------------------------------------------------------------
+
+class CargaTermicaDialog(QDialog):
+    """
+    Diálogo para agregar una carga térmica sobre una barra.
+
+    Permite ingresar variación uniforme de temperatura y gradiente
+    térmico (diferencia entre fibra superior e inferior).
+    """
+
+    def __init__(self, modelo: ModeloEstructural, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Carga Termica")
+        self.setMinimumWidth(420)
+        self._modelo = modelo
+        self.carga_creada: Optional[CargaTermica] = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        group_barra = QGroupBox("Barra")
+        form_barra = QFormLayout(group_barra)
+        self.combo_barra = QComboBox()
+        for barra in self._modelo.barras:
+            nombre = f"B{barra.id}"
+            if barra.nudo_i and barra.nudo_j:
+                nombre += f"  (N{barra.nudo_i.id} - N{barra.nudo_j.id}, L={barra.L:.2f} m)"
+            self.combo_barra.addItem(nombre, userData=barra.id)
+        form_barra.addRow("Barra:", self.combo_barra)
+        layout.addWidget(group_barra)
+
+        group_temp = QGroupBox("Variacion de temperatura")
+        form_temp = QFormLayout(group_temp)
+
+        self.spin_dT_uniforme = QDoubleSpinBox()
+        self.spin_dT_uniforme.setRange(-500.0, 500.0)
+        self.spin_dT_uniforme.setDecimals(2)
+        self.spin_dT_uniforme.setSuffix(" C")
+        self.spin_dT_uniforme.setSingleStep(5.0)
+        form_temp.addRow("dT uniforme:", self.spin_dT_uniforme)
+
+        self.spin_dT_gradiente = QDoubleSpinBox()
+        self.spin_dT_gradiente.setRange(-500.0, 500.0)
+        self.spin_dT_gradiente.setDecimals(2)
+        self.spin_dT_gradiente.setSuffix(" C")
+        self.spin_dT_gradiente.setSingleStep(5.0)
+        form_temp.addRow("dT gradiente (sup - inf):", self.spin_dT_gradiente)
+
+        layout.addWidget(group_temp)
+
+        nota = QLabel(
+            "dT uniforme: expansion/contraccion axial libre (alfa * dT * L).\n"
+            "dT gradiente: diferencia entre fibras sup/inf — genera curvatura\n"
+            "  (kappa = alfa * dT / h). Al menos uno debe ser distinto de cero."
+        )
+        nota.setStyleSheet("color: #555; font-size: 10px; padding: 4px;")
+        nota.setWordWrap(True)
+        layout.addWidget(nota)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_accept(self):
+        if self.combo_barra.count() == 0:
+            QMessageBox.warning(self, "Sin barras", "No hay barras en el modelo.")
+            return
+
+        barra_id = self.combo_barra.currentData()
+        barra = self._modelo.obtener_barra(barra_id)
+        if barra is None:
+            QMessageBox.critical(self, "Error", f"Barra {barra_id} no encontrada.")
+            return
+
+        dT_u = self.spin_dT_uniforme.value()
+        dT_g = self.spin_dT_gradiente.value()
+
+        if abs(dT_u) < 1e-6 and abs(dT_g) < 1e-6:
+            QMessageBox.warning(
+                self,
+                "Valores nulos",
+                "Al menos una variacion de temperatura debe ser distinta de cero."
+            )
+            return
+
+        if abs(dT_g) > 1e-6 and hasattr(barra, 'seccion') and barra.seccion.h < 1e-10:
+            QMessageBox.warning(
+                self,
+                "Seccion sin altura",
+                "La seccion de la barra no tiene altura definida (h=0).\n"
+                "El gradiente termico no producira curvatura."
+            )
+
+        try:
+            self.carga_creada = CargaTermica(
+                barra=barra,
+                delta_T_uniforme=dT_u,
+                delta_T_gradiente=dT_g,
+            )
+            self.accept()
+        except ValueError as e:
+            QMessageBox.critical(self, "Error de validacion", str(e))
+
+
+# ---------------------------------------------------------------------------
+# Diálogo: Movimiento Impuesto
+# ---------------------------------------------------------------------------
+
+class MovimientoImpuestoDialog(QDialog):
+    """
+    Diálogo para agregar un movimiento impuesto en un nudo.
+
+    Los desplazamientos se ingresan en mm y el giro en mrad;
+    internamente se convierten a m y rad al crear el objeto.
+    """
+
+    def __init__(self, modelo: ModeloEstructural, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Movimiento Impuesto")
+        self.setMinimumWidth(380)
+        self._modelo = modelo
+        self.carga_creada: Optional[MovimientoImpuesto] = None
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        group_nudo = QGroupBox("Nudo")
+        form_nudo = QFormLayout(group_nudo)
+        self.combo_nudo = QComboBox()
+        for nudo in self._modelo.nudos:
+            etiqueta = f"N{nudo.id}"
+            if nudo.nombre:
+                etiqueta += f"  ({nudo.nombre})"
+            etiqueta += f"  [{nudo.x:.2f}, {nudo.y:.2f}]"
+            self.combo_nudo.addItem(etiqueta, userData=nudo.id)
+        form_nudo.addRow("Nudo:", self.combo_nudo)
+        layout.addWidget(group_nudo)
+
+        group_comp = QGroupBox("Componentes del desplazamiento")
+        form_comp = QFormLayout(group_comp)
+
+        self.spin_dx = QDoubleSpinBox()
+        self.spin_dx.setRange(-10000.0, 10000.0)
+        self.spin_dx.setDecimals(3)
+        self.spin_dx.setSuffix(" mm")
+        self.spin_dx.setSingleStep(1.0)
+        form_comp.addRow("delta_x  (horizontal):", self.spin_dx)
+
+        self.spin_dy = QDoubleSpinBox()
+        self.spin_dy.setRange(-10000.0, 10000.0)
+        self.spin_dy.setDecimals(3)
+        self.spin_dy.setSuffix(" mm")
+        self.spin_dy.setSingleStep(1.0)
+        form_comp.addRow("delta_y  (vertical, - = hundimiento):", self.spin_dy)
+
+        self.spin_dtheta = QDoubleSpinBox()
+        self.spin_dtheta.setRange(-10000.0, 10000.0)
+        self.spin_dtheta.setDecimals(3)
+        self.spin_dtheta.setSuffix(" mrad")
+        self.spin_dtheta.setSingleStep(0.5)
+        form_comp.addRow("delta_theta  (giro):", self.spin_dtheta)
+
+        layout.addWidget(group_comp)
+
+        nota = QLabel(
+            "Al menos un componente debe ser distinto de cero.\n"
+            "Convencion TERNA: Y+ hacia abajo, giro horario positivo."
+        )
+        nota.setStyleSheet("color: #555; font-size: 10px; padding: 4px;")
+        nota.setWordWrap(True)
+        layout.addWidget(nota)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_accept(self):
+        if self.combo_nudo.count() == 0:
+            QMessageBox.warning(self, "Sin nudos", "No hay nudos en el modelo.")
+            return
+
+        nudo_id = self.combo_nudo.currentData()
+        nudo = self._modelo.obtener_nudo(nudo_id)
+        if nudo is None:
+            QMessageBox.critical(self, "Error", f"Nudo {nudo_id} no encontrado.")
+            return
+
+        # Convertir mm -> m  y  mrad -> rad
+        dx = self.spin_dx.value() / 1000.0
+        dy = self.spin_dy.value() / 1000.0
+        dtheta = self.spin_dtheta.value() / 1000.0
+
+        if abs(dx) < 1e-9 and abs(dy) < 1e-9 and abs(dtheta) < 1e-9:
+            QMessageBox.warning(
+                self,
+                "Valores nulos",
+                "Al menos un componente del movimiento debe ser distinto de cero."
+            )
+            return
+
+        try:
+            self.carga_creada = MovimientoImpuesto(
+                nudo=nudo,
+                delta_x=dx,
+                delta_y=dy,
+                delta_theta=dtheta,
+            )
+            self.accept()
+        except (ValueError, TypeError) as e:
+            QMessageBox.critical(self, "Error de validacion", str(e))
