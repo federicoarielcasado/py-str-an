@@ -877,7 +877,7 @@ class ModeloEstructural:
         if self._modificado:
             lineas.append("\n[!] Modelo modificado desde último guardado")
         if self._resuelto:
-            lineas.append("[✓] Modelo resuelto")
+            lineas.append("[OK] Modelo resuelto")
         else:
             lineas.append("[x] Modelo no resuelto")
 

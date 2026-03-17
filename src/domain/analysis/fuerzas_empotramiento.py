@@ -226,7 +226,7 @@ class CalculadorFuerzasEmpotramiento:
                fef[0] = +EA·α·ΔT_u   (en nudo i, dirección X_local+)
                fef[3] = -EA·α·ΔT_u   (en nudo j, dirección X_local+)
 
-           De este modo:  N_i = p_elem[0] = k@d[0] - fef[0] = -EA·α·ΔT_u ✓
+           De este modo:  N_i = p_elem[0] = k@d[0] - fef[0] = -EA·α·ΔT_u  (correcto)
 
         2. Gradiente lineal ΔT_g [°C] (ΔT entre fibra superior e inferior):
            Curvatura libre: κ_T = α·ΔT_g/h.  En biempotrado el momento
@@ -237,7 +237,7 @@ class CalculadorFuerzasEmpotramiento:
                fef[2] = +EI·κ_T   (en nudo i, dirección θ+)
                fef[5] = -EI·κ_T   (en nudo j, dirección θ+)
 
-           De este modo:  M_i = p_elem[2] = k@d[2] - fef[2] = -EI·κ_T ✓
+           De este modo:  M_i = p_elem[2] = k@d[2] - fef[2] = -EI·κ_T  (correcto)
 
         Args:
             carga: CargaTermica con delta_T_uniforme y/o delta_T_gradiente

@@ -62,17 +62,17 @@ class RedundantesDialog(QDialog):
 
         if gh < 0:
             label_error = QLabel(
-                f"⚠️ <b>Estructura HIPOSTÁTICA</b> (faltan {-gh} vínculos)"
+                f"<b>Estructura HIPOSTATICA</b> — faltan {-gh} vinculos"
             )
             label_error.setStyleSheet("color: #cc0000; font-size: 12px; padding: 5px;")
             layout_info.addWidget(label_error)
         elif gh == 0:
-            label_iso = QLabel("✓ Estructura ISOSTÁTICA (no requiere método de fuerzas)")
+            label_iso = QLabel("Estructura ISOSTATICA — no requiere seleccion de redundantes")
             label_iso.setStyleSheet("color: #00aa00; font-size: 12px; padding: 5px;")
             layout_info.addWidget(label_iso)
         else:
             label_hiper = QLabel(
-                f"✓ Estructura HIPERESTÁTICA (se requieren {gh} redundantes)"
+                f"Estructura HIPERESTATICA — se requieren {gh} redundantes"
             )
             label_hiper.setStyleSheet("color: #0066cc; font-size: 12px; padding: 5px;")
             layout_info.addWidget(label_hiper)
